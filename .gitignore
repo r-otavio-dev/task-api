@@ -3,3 +3,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .env
+tasks.db
+*.db-journal
+venv/

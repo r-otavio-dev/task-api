@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
@@ -10,11 +12,20 @@ from pydantic import (
     model_validator,
 )
 
+import database
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    database.initialize_database()
+    yield
+
 
 app = FastAPI(
     title="Task API",
     version="1.0",
-    description="API CRUD para gerenciamento de tarefas em memória.",
+    description="API CRUD para gerenciamento de tarefas com SQLite.",
+    lifespan=lifespan,
 )
 
 
@@ -70,11 +81,7 @@ class TaskUpdate(BaseModel):
         return self
 
 
-INITIAL_TASKS = [
-    {"id": 1, "title": "Estudar Python", "done": False},
-    {"id": 2, "title": "Fazer atividade", "done": False},
-    {"id": 3, "title": "Enviar projeto para o GitHub", "done": True},
-]
+INITIAL_TASKS = database.INITIAL_TASKS
 
 # Esta lista é a única forma de armazenamento da aplicação.
 tasks = [task.copy() for task in INITIAL_TASKS]
