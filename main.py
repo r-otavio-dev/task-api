@@ -163,14 +163,7 @@ def buscar_tarefa(task_id: int):
     summary="Criar uma tarefa",
 )
 def criar_tarefa(payload: TaskCreate):
-    proximo_id = max((task["id"] for task in tasks), default=0) + 1
-    nova_tarefa = {
-        "id": proximo_id,
-        "title": payload.title,
-        "done": False,
-    }
-    tasks.append(nova_tarefa)
-    return nova_tarefa
+    return database.create_task(payload.title)
 
 
 @app.put(

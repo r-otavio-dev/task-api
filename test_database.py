@@ -2,6 +2,7 @@ import sqlite3
 
 from database import (
     INITIAL_TASKS,
+    create_task,
     get_task,
     initialize_database,
     list_tasks,
@@ -80,3 +81,17 @@ def test_get_task_returns_none_for_unknown_id(tmp_path):
     task = get_task(999, database_path)
 
     assert task is None
+
+
+def test_create_task_inserts_and_returns_generated_id(tmp_path):
+    database_path = tmp_path / "tasks.db"
+    initialize_database(database_path)
+
+    created_task = create_task("Aprender SQLite", database_path)
+
+    assert created_task == {
+        "id": 4,
+        "title": "Aprender SQLite",
+        "done": False,
+    }
+    assert get_task(4, database_path) == created_task

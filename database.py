@@ -86,3 +86,26 @@ def get_task(
         ).fetchone()
 
     return row_to_task(row) if row is not None else None
+
+
+def create_task(
+    title: str,
+    database_path: str | Path | None = None,
+) -> dict[str, int | str | bool]:
+    with get_db_connection(database_path) as connection:
+        cursor = connection.execute(
+            "INSERT INTO tasks (title, done) VALUES (?, ?)",
+            (title, 0),
+        )
+        task_id = cursor.lastrowid
+        connection.commit()
+
+        row = connection.execute(
+            "SELECT id, title, done FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+
+    if row is None:
+        raise RuntimeError("The created task could not be read from SQLite")
+
+    return row_to_task(row)
