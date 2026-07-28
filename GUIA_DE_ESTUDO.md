@@ -1,7 +1,7 @@
-# Guia de estudo: Task API do zero ao GitHub
+# Guia de estudo: Task API do zero ao SQLite e GitHub
 
 Este guia explica, em linguagem de primeira aula, como a Task API foi
-inspecionada, corrigida, testada, versionada e publicada.
+inspecionada, conectada ao banco, testada e versionada.
 
 ## 1. O que foi construído
 
@@ -23,21 +23,23 @@ As quatro operações principais formam o CRUD:
 - **Update:** atualizar dados com `PUT`.
 - **Delete:** excluir dados com `DELETE`.
 
-Os dados deste projeto ficam somente na memória. O GitHub armazena o código,
-mas não armazena tarefas criadas enquanto o servidor está rodando.
+Os dados deste projeto ficam no arquivo SQLite `tasks.db`. Por isso, as tarefas
+continuam existindo depois que o servidor é encerrado e iniciado novamente.
+O GitHub armazena o código; o arquivo local do banco é ignorado pelo Git.
 
 ## 2. Entrando no projeto pelo terminal
 
-O projeto está nesta pasta:
+Abra o PowerShell na pasta em que você clonou ou salvou o projeto. Um caminho
+genérico seria:
 
 ```text
-C:\Users\rotas\OneDrive\Documentos\flyrank\task-api
+caminho\para\task-api
 ```
 
 No PowerShell, use `cd` para entrar nela:
 
 ```powershell
-cd C:\Users\rotas\OneDrive\Documentos\flyrank\task-api
+cd caminho\para\task-api
 ```
 
 `cd` significa *change directory*, ou mudar de diretório.
@@ -48,13 +50,20 @@ Os principais itens encontrados inicialmente foram:
 .git/
 .venv/
 __pycache__/
+database.py
 main.py
+queries.sql
+test_database.py
+test_main.py
 ```
 
 - `.git` guarda o histórico e as branches do Git.
 - `.venv` é o ambiente virtual do Python.
 - `__pycache__` contém arquivos compilados automaticamente.
-- `main.py` é o código-fonte principal.
+- `main.py` contém as rotas e validações HTTP.
+- `database.py` contém a conexão e as operações SQLite.
+- `queries.sql` reúne consultas manuais para estudo.
+- os arquivos `test_*.py` contêm os testes automatizados.
 
 ## 3. Inspecionando o Git antes de alterar arquivos
 
@@ -96,7 +105,7 @@ Uma branch permite desenvolver sem apagar o estado da branch anterior. A
 O projeto usa o Python localizado em:
 
 ```text
-.venv\Scripts\python.exe
+.\.venv\Scripts\python.exe
 ```
 
 Um ambiente virtual mantém as bibliotecas deste projeto separadas das
@@ -105,7 +114,7 @@ bibliotecas de outros projetos.
 Para conferir a versão:
 
 ```powershell
-.venv\Scripts\python.exe --version
+.\.venv\Scripts\python.exe --version
 ```
 
 Versão usada durante o desenvolvimento:
@@ -143,12 +152,14 @@ O objeto principal da aplicação é criado assim:
 app = FastAPI(
     title="Task API",
     version="1.0",
-    description="API CRUD para gerenciamento de tarefas em memória.",
+    description="API CRUD para gerenciamento de tarefas com SQLite.",
+    lifespan=lifespan,
 )
 ```
 
 O FastAPI utiliza essas informações para gerar automaticamente a documentação
-Swagger.
+Swagger. O `lifespan` executa a inicialização do banco quando a aplicação
+começa.
 
 ## 8. Modelos com Pydantic
 
@@ -205,26 +216,57 @@ JSON `true` e `false`; textos como `"true"`, números e `null` são recusados.
 
 O modelo também verifica se pelo menos um campo foi enviado.
 
-## 9. Armazenamento em memória
+## 9. Armazenamento com SQLite
 
-As tarefas iniciais são:
+SQLite é um banco relacional salvo em um arquivo. Ele não precisa de outro
+servidor: o próprio Python abre `tasks.db`, executa SQL e fecha a conexão.
 
-```python
-INITIAL_TASKS = [
-    {"id": 1, "title": "Estudar Python", "done": False},
-    {"id": 2, "title": "Fazer atividade", "done": False},
-    {"id": 3, "title": "Enviar projeto para o GitHub", "done": True},
-]
-```
-
-A lista da aplicação é criada com cópias desses dicionários:
+O caminho é calculado a partir do arquivo do projeto:
 
 ```python
-tasks = [task.copy() for task in INITIAL_TASKS]
+PROJECT_DIRECTORY = Path(__file__).resolve().parent
+DATABASE_PATH = PROJECT_DIRECTORY / "tasks.db"
 ```
 
-Ao encerrar o processo Python, a memória é liberada. Ao iniciar novamente, as
-três tarefas originais voltam.
+Isso funciona mesmo se o comando Uvicorn for iniciado por outra pasta.
+
+A tabela é criada com:
+
+```sql
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    done BOOLEAN NOT NULL DEFAULT 0
+);
+```
+
+- `INTEGER PRIMARY KEY AUTOINCREMENT` gera um ID novo;
+- `TEXT NOT NULL` exige um título;
+- `BOOLEAN NOT NULL DEFAULT 0` começa como não concluída;
+- `IF NOT EXISTS` evita recriar uma tabela já existente.
+
+Depois de criar a tabela, a inicialização executa `SELECT COUNT(*)`. As três
+tarefas de exemplo são inseridas somente quando o resultado é zero. Executar a
+inicialização outra vez não duplica dados.
+
+Cada operação usa este formato:
+
+```python
+with get_db_connection() as connection:
+    row = connection.execute(
+        "SELECT id, title, done FROM tasks WHERE id = ?",
+        (task_id,),
+    ).fetchone()
+```
+
+O `?` é um parâmetro. O valor não é colado dentro da instrução SQL, o que evita
+injeção SQL. O bloco `with` garante o fechamento da conexão.
+
+Nas operações de escrita, `commit()` confirma a mudança no arquivo. Sem ele, um
+`INSERT`, `UPDATE` ou `DELETE` poderia ser perdido ao fechar a conexão.
+
+SQLite representa booleanos como `0` e `1`. `row_to_task()` converte esses
+valores em `False` e `True`, que aparecem como `false` e `true` no JSON.
 
 ## 10. Convertendo validações para HTTP 400
 
@@ -260,7 +302,7 @@ Essa rota confirma que o servidor está respondendo.
 
 ### `GET /tasks`
 
-Retorna todas as tarefas armazenadas na lista.
+Executa um `SELECT` e retorna todas as tarefas armazenadas no banco.
 
 ### `GET /tasks/{task_id}`
 
@@ -275,8 +317,8 @@ Recebe:
 {"title": "Buy milk"}
 ```
 
-O próximo ID é calculado com o maior ID atual mais um. `done` começa como
-`false`, a tarefa é adicionada à lista e a resposta usa HTTP `201`.
+O SQLite gera o ID automaticamente. `lastrowid` informa o ID criado, `done`
+começa como `false`, `commit()` persiste a linha e a resposta usa HTTP `201`.
 
 ### `PUT /tasks/{task_id}`
 
@@ -297,12 +339,13 @@ ou os dois:
 
 O código usa `model_dump(exclude_unset=True)` para incluir somente os campos
 realmente enviados. Toda a validação ocorre antes da alteração, evitando uma
-atualização parcial causada por um corpo inválido.
+atualização parcial causada por um corpo inválido. Depois, o código executa um
+`UPDATE` parametrizado e confirma a operação com `commit()`.
 
 ### `DELETE /tasks/{task_id}`
 
-Remove a tarefa da lista e retorna HTTP `204`, que significa sucesso sem corpo
-de resposta.
+Executa um `DELETE` parametrizado e retorna HTTP `204`, que significa sucesso
+sem corpo de resposta.
 
 ## 12. Swagger
 
@@ -333,7 +376,7 @@ uvicorn==0.51.0
 Para instalar essas dependências:
 
 ```powershell
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 `-m pip` executa o instalador `pip` usando o Python da `.venv`. `-r` pede que o
@@ -341,10 +384,11 @@ pip leia a lista de um arquivo.
 
 ## 14. Testes automatizados
 
-Os testes usam:
+Os testes HTTP usam:
 
 ```python
-client = TestClient(app)
+with TestClient(app) as client:
+    response = client.get("/health")
 ```
 
 O `TestClient` simula requisições HTTP sem precisar abrir uma porta de rede.
@@ -352,7 +396,7 @@ O `TestClient` simula requisições HTTP sem precisar abrir uma porta de rede.
 Um teste básico é:
 
 ```python
-def test_health_retorna_ok():
+def test_health_retorna_ok(client):
     response = client.get("/health")
 
     assert response.status_code == 200
@@ -361,16 +405,21 @@ def test_health_retorna_ok():
 
 `assert` declara uma condição que precisa ser verdadeira.
 
-Antes de cada teste, uma fixture restaura as três tarefas iniciais. Assim, um
-teste que exclui uma tarefa não interfere no próximo teste.
+Antes de cada teste, uma fixture aponta `DATABASE_PATH` para um arquivo
+temporário. Assim, um teste que exclui uma tarefa não interfere no próximo
+teste e nunca altera o `tasks.db` real do usuário.
+
+Os testes também fecham e abrem novas conexões e reiniciam o `TestClient` para
+comprovar a persistência e a ausência de seed duplicado.
 
 Para executar a suíte:
 
 ```powershell
-.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-`-q` produz uma saída compacta. A validação final teve 27 casos aprovados.
+`-q` produz uma saída compacta. A validação desta versão cobre inicialização,
+CRUD, erros, conversão booleana, SQL parametrizado e persistência.
 
 ## 15. `.gitignore` e arquivos gerados
 
@@ -382,10 +431,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .env
+tasks.db
+*.db-journal
+venv/
 ```
 
 Esses arquivos não devem ser versionados porque são ambientes locais, caches,
-arquivos compilados ou possíveis arquivos de configuração sensível.
+arquivos compilados, dados gerados ou possíveis configurações sensíveis.
 
 Como um `.pyc` já estava rastreado, ele foi removido somente do índice:
 
@@ -401,7 +453,7 @@ do Git.
 Para iniciar:
 
 ```powershell
-.venv\Scripts\python.exe -m uvicorn main:app
+.\.venv\Scripts\python.exe -m uvicorn main:app
 ```
 
 `main:app` significa “abra `main.py` e encontre o objeto `app`”. O servidor fica
@@ -419,8 +471,8 @@ curl.exe -i http://localhost:8000/health
 ## 17. README e documentação
 
 O `README.md` é a página principal exibida pelo GitHub. Ele registra descrição,
-instalação, rotas, exemplos JSON, comando do servidor, Swagger, armazenamento em
-memória e execução dos testes.
+instalação, rotas, exemplos JSON, comando do servidor, Swagger, schema SQLite,
+persistência, DB Browser e execução dos testes.
 
 ## 18. Commits
 
@@ -449,6 +501,17 @@ ed05ad9 Stage 4: pin compatible dependencies
 f2a02be Stage 1: root and health endpoints
 ```
 
+Os seis commits da conexão com SQLite são:
+
+```text
+Stage 0: create SQLite database
+Stage 1: database read endpoints
+Stage 2: insert into database
+Stage 3: update and delete with SQL
+Stage 4: explored SQLite
+Stage 5: database documentation
+```
+
 ## 19. GitHub
 
 O repositório público está em:
@@ -467,7 +530,7 @@ quando o servidor está rodando no computador.
 Entre no projeto:
 
 ```powershell
-cd C:\Users\rotas\OneDrive\Documentos\flyrank\task-api
+cd caminho\para\task-api
 ```
 
 Crie uma branch de estudo:
@@ -486,11 +549,11 @@ git log --oneline
 Execute os testes:
 
 ```powershell
-.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
 O ciclo profissional básico aplicado neste projeto foi:
 
 ```text
-entender → alterar → testar → revisar → commitar → publicar
+entender → alterar → testar → revisar → commitar
 ```
