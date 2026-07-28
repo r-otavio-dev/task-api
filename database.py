@@ -109,3 +109,41 @@ def create_task(
         raise RuntimeError("The created task could not be read from SQLite")
 
     return row_to_task(row)
+
+
+def update_task(
+    task_id: int,
+    title: str,
+    done: bool,
+    database_path: str | Path | None = None,
+) -> dict[str, int | str | bool] | None:
+    with get_db_connection(database_path) as connection:
+        cursor = connection.execute(
+            "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
+            (title, int(done), task_id),
+        )
+
+        if cursor.rowcount == 0:
+            return None
+
+        connection.commit()
+        row = connection.execute(
+            "SELECT id, title, done FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+
+    return row_to_task(row) if row is not None else None
+
+
+def delete_task(
+    task_id: int,
+    database_path: str | Path | None = None,
+) -> bool:
+    with get_db_connection(database_path) as connection:
+        cursor = connection.execute(
+            "DELETE FROM tasks WHERE id = ?",
+            (task_id,),
+        )
+        connection.commit()
+
+    return cursor.rowcount > 0

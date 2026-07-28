@@ -3,9 +3,11 @@ import sqlite3
 from database import (
     INITIAL_TASKS,
     create_task,
+    delete_task,
     get_task,
     initialize_database,
     list_tasks,
+    update_task,
 )
 
 
@@ -95,3 +97,45 @@ def test_create_task_inserts_and_returns_generated_id(tmp_path):
         "done": False,
     }
     assert get_task(4, database_path) == created_task
+
+
+def test_update_task_persists_title_and_done(tmp_path):
+    database_path = tmp_path / "tasks.db"
+    initialize_database(database_path)
+
+    updated_task = update_task(
+        1,
+        "Estudar SQLite",
+        True,
+        database_path,
+    )
+
+    assert updated_task == {
+        "id": 1,
+        "title": "Estudar SQLite",
+        "done": True,
+    }
+    assert get_task(1, database_path) == updated_task
+
+
+def test_update_task_returns_none_for_unknown_id(tmp_path):
+    database_path = tmp_path / "tasks.db"
+    initialize_database(database_path)
+
+    updated_task = update_task(
+        999,
+        "Tarefa inexistente",
+        False,
+        database_path,
+    )
+
+    assert updated_task is None
+
+
+def test_delete_task_removes_row_and_reports_result(tmp_path):
+    database_path = tmp_path / "tasks.db"
+    initialize_database(database_path)
+
+    assert delete_task(2, database_path) is True
+    assert get_task(2, database_path) is None
+    assert delete_task(2, database_path) is False

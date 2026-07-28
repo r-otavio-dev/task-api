@@ -81,12 +81,6 @@ class TaskUpdate(BaseModel):
         return self
 
 
-INITIAL_TASKS = database.INITIAL_TASKS
-
-# Esta lista é a única forma de armazenamento da aplicação.
-tasks = [task.copy() for task in INITIAL_TASKS]
-
-
 @app.exception_handler(RequestValidationError)
 def validation_exception_handler(
     _request: Request,
@@ -97,13 +91,6 @@ def validation_exception_handler(
         status_code=400,
         content={"error": "Invalid request body"},
     )
-
-
-def procurar_indice(task_id: int) -> int | None:
-    for indice, task in enumerate(tasks):
-        if task["id"] == task_id:
-            return indice
-    return None
 
 
 def resposta_nao_encontrada(task_id: int) -> JSONResponse:
@@ -172,13 +159,19 @@ def criar_tarefa(payload: TaskCreate):
     summary="Atualizar uma tarefa",
 )
 def atualizar_tarefa(task_id: int, payload: TaskUpdate):
-    indice = procurar_indice(task_id)
-    if indice is None:
+    current_task = database.get_task(task_id)
+    if current_task is None:
         return resposta_nao_encontrada(task_id)
 
-    alteracoes = payload.model_dump(exclude_unset=True)
-    tasks[indice].update(alteracoes)
-    return tasks[indice]
+    changes = payload.model_dump(exclude_unset=True)
+    title = changes.get("title", current_task["title"])
+    done = changes.get("done", current_task["done"])
+
+    updated_task = database.update_task(task_id, title, done)
+    if updated_task is None:
+        return resposta_nao_encontrada(task_id)
+
+    return updated_task
 
 
 @app.delete(
@@ -187,9 +180,7 @@ def atualizar_tarefa(task_id: int, payload: TaskUpdate):
     summary="Excluir uma tarefa",
 )
 def excluir_tarefa(task_id: int):
-    indice = procurar_indice(task_id)
-    if indice is None:
+    if not database.delete_task(task_id):
         return resposta_nao_encontrada(task_id)
 
-    tasks.pop(indice)
     return Response(status_code=204)
