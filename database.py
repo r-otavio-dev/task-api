@@ -54,3 +54,35 @@ def initialize_database(database_path: str | Path | None = None) -> None:
             )
 
         connection.commit()
+
+
+def row_to_task(row: sqlite3.Row) -> dict[str, int | str | bool]:
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"]),
+    }
+
+
+def list_tasks(
+    database_path: str | Path | None = None,
+) -> list[dict[str, int | str | bool]]:
+    with get_db_connection(database_path) as connection:
+        rows = connection.execute(
+            "SELECT id, title, done FROM tasks ORDER BY id"
+        ).fetchall()
+
+    return [row_to_task(row) for row in rows]
+
+
+def get_task(
+    task_id: int,
+    database_path: str | Path | None = None,
+) -> dict[str, int | str | bool] | None:
+    with get_db_connection(database_path) as connection:
+        row = connection.execute(
+            "SELECT id, title, done FROM tasks WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+
+    return row_to_task(row) if row is not None else None

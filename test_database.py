@@ -1,6 +1,11 @@
 import sqlite3
 
-from database import INITIAL_TASKS, initialize_database
+from database import (
+    INITIAL_TASKS,
+    get_task,
+    initialize_database,
+    list_tasks,
+)
 
 
 def test_initialize_database_creates_expected_table(tmp_path):
@@ -46,3 +51,32 @@ def test_initialize_database_does_not_duplicate_seed_data(tmp_path):
         ).fetchone()[0]
 
     assert task_count == 3
+
+
+def test_list_tasks_reads_rows_and_converts_booleans(tmp_path):
+    database_path = tmp_path / "tasks.db"
+    initialize_database(database_path)
+
+    tasks = list_tasks(database_path)
+
+    assert tasks == INITIAL_TASKS
+    assert tasks[0]["done"] is False
+    assert tasks[2]["done"] is True
+
+
+def test_get_task_reads_one_row_by_id(tmp_path):
+    database_path = tmp_path / "tasks.db"
+    initialize_database(database_path)
+
+    task = get_task(2, database_path)
+
+    assert task == INITIAL_TASKS[1]
+
+
+def test_get_task_returns_none_for_unknown_id(tmp_path):
+    database_path = tmp_path / "tasks.db"
+    initialize_database(database_path)
+
+    task = get_task(999, database_path)
+
+    assert task is None

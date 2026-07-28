@@ -141,7 +141,7 @@ def verificar_saude():
     summary="Listar todas as tarefas",
 )
 def listar_tarefas():
-    return tasks
+    return database.list_tasks()
 
 
 @app.get(
@@ -150,10 +150,10 @@ def listar_tarefas():
     summary="Buscar uma tarefa pelo ID",
 )
 def buscar_tarefa(task_id: int):
-    indice = procurar_indice(task_id)
-    if indice is None:
+    task = database.get_task(task_id)
+    if task is None:
         return resposta_nao_encontrada(task_id)
-    return tasks[indice]
+    return task
 
 
 @app.post(
