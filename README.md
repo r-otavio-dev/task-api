@@ -7,6 +7,22 @@ para armazená-los de forma persistente.
 Esta versão conclui a atividade **W3 · A1 — Connecting your CRUD to the
 database** sem alterar o contrato público da API anterior.
 
+## Contexto de aprendizado
+
+Este é um projeto acadêmico desenvolvido em etapas para praticar fundamentos de
+backend. Usei ferramentas de IA como apoio em partes da implementação e da
+documentação; meu objetivo atual é conseguir explicar e alterar sozinho o fluxo
+completo, da requisição HTTP até a consulta SQL e a resposta da API.
+
+Os pontos que estou consolidando com este repositório são:
+
+- diferença entre os métodos HTTP de um CRUD;
+- validação de entrada com Pydantic;
+- códigos de status e tratamento de erros;
+- consultas SQL parametrizadas com SQLite;
+- separação entre rotas e acesso a dados;
+- testes de endpoints e da camada de persistência.
+
 ## Objetivo
 
 O projeto demonstra um CRUD completo:
